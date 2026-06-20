@@ -1,0 +1,138 @@
+SequelMariaDB Enumeration and Database Discovery Case Study
+
+Objective
+
+Perform service enumeration against a target host to identify exposed database services, establish access, enumerate available databases, and analyze accessible data.
+
+Target Information
+
+Target IP: 10.129.72.199
+
+Platform: Hack The Box (HTB)
+
+Tools Used:
+
+Nmap
+MySQL Client
+Linux Terminal
+Phase 1: Network Reconnaissance
+
+An Nmap service and version detection scan was performed against the target host.
+
+nmap -sC -sV 10.129.72.199
+Findings
+Port	Service	Status
+3306/TCP	MySQL / MariaDB	Open
+
+The scan revealed an exposed database service running on TCP port 3306.
+
+Phase 2: Service Enumeration
+
+Further investigation identified the database service as MariaDB.
+
+Version Information
+Protocol Version: 10
+Version: 5.5.5-10.3.27-MariaDB-0+deb10u1
+Analysis
+Component	Description
+5.5.5	MySQL compatibility marker
+10.3.27	Actual MariaDB version
+deb10u1	Debian package version
+
+This information provided insight into the database environment and operating system packaging.
+
+Phase 3: Database Access
+
+A connection attempt was made using the MySQL client.
+
+mysql -h 10.129.72.199 -u root -p --skip-ssl
+Parameter Explanation
+Option	Purpose
+-h	Target host
+-u	Username
+-p	Password prompt
+--skip-ssl	Disable SSL negotiation
+
+The connection to the MariaDB service was successfully established.
+
+Phase 4: Privilege Verification
+
+Once connected, account information and permissions were reviewed.
+
+SELECT USER();
+SELECT CURRENT_USER();
+SHOW GRANTS;
+Purpose
+Identify authenticated account
+Verify effective database privileges
+Determine accessible resources
+Phase 5: Database Enumeration
+
+Available databases were enumerated.
+
+SHOW DATABASES;
+
+Among the discovered databases, an interesting database named:
+
+htb
+
+was identified for further investigation.
+
+The database was selected:
+
+USE htb;
+Phase 6: Table Enumeration
+
+The contents of the selected database were examined.
+
+SHOW TABLES;
+Tables Discovered
+config
+users
+
+The presence of a configuration table suggested the possibility of sensitive application information.
+
+Phase 7: Data Review
+
+The configuration table was queried.
+
+SELECT * FROM config;
+Findings
+
+The table contained application configuration data and challenge-related information.
+
+This confirmed that the exposed database permitted access to sensitive records without adequate restrictions.
+
+Results
+Identified exposed MariaDB service.
+Established database connectivity.
+Verified account privileges.
+Enumerated available databases.
+Discovered application-specific tables.
+Retrieved configuration data from the database.
+Security Weaknesses Identified
+Exposed Database Service
+
+The MariaDB service was accessible over the network.
+
+Excessive Database Access
+
+The authenticated account had sufficient privileges to enumerate databases and tables.
+
+Sensitive Information Exposure
+
+Configuration data was accessible and contained valuable information.
+
+Skills Demonstrated
+Network Reconnaissance
+Service Enumeration
+Database Enumeration
+MariaDB Assessment
+SQL Querying
+Information Gathering
+Linux Command Line
+Security Analysis
+
+Conclusion
+
+The assessment identified an exposed MariaDB service running on TCP port 3306. Through systematic enumeration, database access was established, privileges were reviewed, and available databases were explored. Further investigation revealed sensitive configuration information stored within the application database. This exercise demonstrated practical database enumeration techniques commonly used during penetration testing and security assessments.
